@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 
-namespace Sso.Models
+namespace Sso.ActiveDirectory.Attributes
 {
     public class SecurityHeadersAttribute : ActionFilterAttribute
     {

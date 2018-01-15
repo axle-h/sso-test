@@ -3,7 +3,7 @@ using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 
-namespace Sso
+namespace Sso.ActiveDirectory
 {
     public class Program
     {
@@ -19,7 +19,6 @@ namespace Sso
             var host = WebHost.CreateDefaultBuilder(args)
                 .UseConfiguration(config)
                 .UseStartup<Startup>()
-                .UseUrls("http://*:5000")
                 .Build();
 
             host.Run();

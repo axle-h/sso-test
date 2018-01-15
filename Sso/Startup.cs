@@ -1,14 +1,19 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Security.Claims;
+using System.Threading.Tasks;
 using IdentityServer4;
 using IdentityServer4.Models;
 using IdentityServer4.Test;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using Sso.Configuration;
+using Sso.Services;
 
 namespace Sso
 {
@@ -23,38 +28,49 @@ namespace Sso
 
         public void ConfigureServices(IServiceCollection services)
         {
+            services.AddOptions();
+            var authSection = _configuration.GetSection("auth");
+            services.Configure<AccountOptions>(authSection);
+
             services.AddLogging(c => c.AddConsole().AddDebug());
-            
+
+            services.AddTransient<IAccountService, AccountService>();
+
             services.AddIdentityServer()
-                    .AddDeveloperSigningCredential()
-                    .AddInMemoryPersistedGrants()
-                    .AddInMemoryIdentityResources(GetIdentityResources())
-                    .AddInMemoryApiResources(GetApiResources())
-                    .AddInMemoryClients(GetClients())
-                    .AddTestUsers(GetUsers());
+                .AddDeveloperSigningCredential()
+                .AddInMemoryPersistedGrants()
+                .AddInMemoryIdentityResources(GetIdentityResources())
+                .AddInMemoryApiResources(GetApiResources())
+                .AddInMemoryClients(GetClients())
+                .AddTestUsers(GetUsers());
 
-            services.AddAuthentication()
-                    .AddGoogle("Google", options =>
-                                         {
-                                             options.SignInScheme = IdentityServerConstants.ExternalCookieAuthenticationScheme;
+            services
+                .AddAuthentication()
+                .AddOpenIdConnect("oidc", "Windows", options =>
+                {
+                    options.SignInScheme = IdentityServerConstants.ExternalCookieAuthenticationScheme;
+                    options.SignOutScheme = IdentityServerConstants.SignoutScheme;
 
-                                             options.ClientId = "434483408261-55tc8n0cs4ff1fe21ea8df2o443v2iuc.apps.googleusercontent.com";
-                                             options.ClientSecret = "3gcoTrEDPPJ0ukn_aYYT6PWo";
-                                         })
-                    .AddOpenIdConnect("oidc", "OpenID Connect", options =>
-                                                                {
-                                                                    options.SignInScheme = IdentityServerConstants.ExternalCookieAuthenticationScheme;
-                                                                    options.SignOutScheme = IdentityServerConstants.SignoutScheme;
+                    options.Authority = "http://local.windows-sso.com/"; // TODO: config
+                    options.RequireHttpsMetadata = false; // TODO: throw if not in development mode
+                    options.ClientId = "implicit";
+                    options.SaveTokens = true;
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        NameClaimType = "name",
+                        RoleClaimType = "role"
+                    };
+                    options.Events = new OpenIdConnectEvents
+                    {
+                        OnRemoteFailure = context =>
+                        {
+                            context.Response.Redirect("/");
+                            context.HandleResponse();
 
-                                                                    options.Authority = "https://demo.identityserver.io/";
-                                                                    options.ClientId = "implicit";
-
-                                                                    options.TokenValidationParameters = new TokenValidationParameters
-                                                                                                        {
-                                                                                                            NameClaimType = "name",
-                                                                                                            RoleClaimType = "role"
-                                                                                                        };
-                                                                });
+                            return Task.FromResult(0);
+                        }
+                    };
+                });
 
             services.AddMvc();
         }
@@ -64,19 +80,19 @@ namespace Sso
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
-                app.UseDatabaseErrorPage();
             }
 
             app.UseStaticFiles();
             app.UseIdentityServer();
             app.UseMvcWithDefaultRoute();
         }
-
-        // scopes define the resources in your system
+        
         private static IEnumerable<IdentityResource> GetIdentityResources()
         {
             yield return new IdentityResources.OpenId();
             yield return new IdentityResources.Profile();
+            yield return new IdentityResources.Email();
+            yield return new IdentityResources.Phone();
         }
 
         private static IEnumerable<ApiResource> GetApiResources()
@@ -87,50 +103,21 @@ namespace Sso
         // clients want to access resources (aka scopes)
         private static IEnumerable<Client> GetClients()
         {
-            // client credentials client
-            yield return new Client
-                         {
-                             ClientId = "client",
-                             AllowedGrantTypes = GrantTypes.ClientCredentials,
-
-                             ClientSecrets =
-                             {
-                                 new Secret("secret".Sha256())
-                             },
-                             AllowedScopes = { "api1" }
-                         };
-
-            // resource owner password grant client
-            yield return new Client
-                         {
-                             ClientId = "ro.client",
-                             AllowedGrantTypes = GrantTypes.ResourceOwnerPassword,
-
-                             ClientSecrets =
-                             {
-                                 new Secret("secret".Sha256())
-                             },
-                             AllowedScopes = { "api1" }
-                         };
-
             // OpenID Connect hybrid flow and client credentials client (MVC)
             yield return new Client
-                         {
-                             ClientId = "mvc",
-                             ClientName = "MVC Client",
-                             AllowedGrantTypes = GrantTypes.Implicit,
-
-                             RedirectUris = { "http://localhost:5002/signin-oidc" },
-                             PostLogoutRedirectUris = { "http://localhost:5002/signout-callback-oidc" },
-
-                             AllowedScopes =
-                             {
-                                 IdentityServerConstants.StandardScopes.OpenId,
-                                 IdentityServerConstants.StandardScopes.Profile
-                             },
-
-                             RequireConsent = false
-                         };
+            {
+                ClientId = "mvc",
+                ClientName = "MVC Client",
+                AllowedGrantTypes = GrantTypes.Implicit,
+                RedirectUris = {"http://localhost:5002/signin-oidc"},
+                PostLogoutRedirectUris = {"http://localhost:5002/signout-callback-oidc"},
+                AllowedScopes =
+                {
+                    IdentityServerConstants.StandardScopes.OpenId,
+                    IdentityServerConstants.StandardScopes.Profile
+                },
+                RequireConsent = false
+            };
         }
 
         private static List<TestUser> GetUsers()

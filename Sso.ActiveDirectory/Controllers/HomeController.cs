@@ -1,11 +1,10 @@
 ﻿using System.Threading.Tasks;
 using IdentityServer4.Services;
 using Microsoft.AspNetCore.Mvc;
-using Sso.Attributes;
-using Sso.Models;
-using Sso.Models.Home;
+using Sso.ActiveDirectory.Attributes;
+using Sso.ActiveDirectory.Models;
 
-namespace Sso.Controllers
+namespace Sso.ActiveDirectory.Controllers
 {
     [SecurityHeaders]
     public class HomeController : Controller
@@ -36,7 +35,7 @@ namespace Sso.Controllers
                 vm.Error = message;
             }
 
-            return View("Error", vm);
+            return View(vm);
         }
     }
 }

@@ -14,6 +14,9 @@ using IdentityServer4.Test;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using Sso.Attributes;
+using Sso.Configuration;
 using Sso.Models;
 using Sso.Models.Account;
 using Sso.Services;
@@ -31,7 +34,8 @@ namespace Sso.Controllers
         private readonly TestUserStore _users;
         private readonly IIdentityServerInteractionService _interaction;
         private readonly IEventService _events;
-        private readonly AccountService _account;
+        private readonly IAccountService _accountService;
+        private readonly IOptions<AccountOptions> _options;
 
         public AccountController(
             IIdentityServerInteractionService interaction,
@@ -39,13 +43,15 @@ namespace Sso.Controllers
             IHttpContextAccessor httpContextAccessor,
             IAuthenticationSchemeProvider schemeProvider,
             IEventService events,
-            TestUserStore users = null)
+            IAccountService accountService,
+            IOptions<AccountOptions> options, TestUserStore users = null)
         {
             // if the TestUserStore is not in DI, then we'll just use the global users collection
             _users = users ?? new TestUserStore(TestUsers.Users);
             _interaction = interaction;
             _events = events;
-            _account = new AccountService(interaction, httpContextAccessor, schemeProvider, clientStore);
+            _accountService = accountService;
+            _options = options;
         }
 
         /// <summary>
@@ -55,7 +61,7 @@ namespace Sso.Controllers
         public async Task<IActionResult> Login(string returnUrl)
         {
             // build a model so we know what to show on the login page
-            var vm = await _account.BuildLoginViewModelAsync(returnUrl);
+            var vm = await _accountService.BuildLoginViewModelAsync(returnUrl);
 
             if (vm.IsExternalLoginOnly)
             {
@@ -94,6 +100,7 @@ namespace Sso.Controllers
 
             if (ModelState.IsValid)
             {
+                var config = _options.Value;
                 // validate username/password against in-memory store
                 if (_users.ValidateCredentials(model.Username, model.Password))
                 {
@@ -103,12 +110,12 @@ namespace Sso.Controllers
                     // only set explicit expiration here if user chooses "remember me". 
                     // otherwise we rely upon expiration configured in cookie middleware.
                     AuthenticationProperties props = null;
-                    if (AccountOptions.AllowRememberLogin && model.RememberLogin)
+                    if (config.AllowRememberLogin && model.RememberLogin)
                     {
                         props = new AuthenticationProperties
                         {
                             IsPersistent = true,
-                            ExpiresUtc = DateTimeOffset.UtcNow.Add(AccountOptions.RememberMeLoginDuration)
+                            ExpiresUtc = DateTimeOffset.UtcNow.Add(config.RememberMeLoginDuration)
                         };
                     };
 
@@ -126,11 +133,11 @@ namespace Sso.Controllers
 
                 await _events.RaiseAsync(new UserLoginFailureEvent(model.Username, "invalid credentials"));
 
-                ModelState.AddModelError("", AccountOptions.InvalidCredentialsErrorMessage);
+                ModelState.AddModelError("", config.InvalidCredentialsErrorMessage);
             }
 
             // something went wrong, show form with error
-            var vm = await _account.BuildLoginViewModelAsync(model);
+            var vm = await _accountService.BuildLoginViewModelAsync(model);
             return View(vm);
         }
 
@@ -245,7 +252,7 @@ namespace Sso.Controllers
         public async Task<IActionResult> Logout(string logoutId)
         {
             // build a model so the logout page knows what to display
-            var vm = await _account.BuildLogoutViewModelAsync(logoutId);
+            var vm = await _accountService.BuildLogoutViewModelAsync(logoutId);
 
             if (vm.ShowLogoutPrompt == false)
             {
@@ -265,7 +272,7 @@ namespace Sso.Controllers
         public async Task<IActionResult> Logout(LogoutInputModel model)
         {
             // build a model so the logged out page knows what to display
-            var vm = await _account.BuildLoggedOutViewModelAsync(model.LogoutId);
+            var vm = await _accountService.BuildLoggedOutViewModelAsync(model.LogoutId);
 
             var user = HttpContext.User;
             if (user?.Identity.IsAuthenticated == true)

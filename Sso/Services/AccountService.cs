@@ -7,27 +7,32 @@ using IdentityServer4.Services;
 using IdentityServer4.Stores;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Options;
+using Sso.Configuration;
 using Sso.Models.Account;
 
 namespace Sso.Services
 {
-    public class AccountService
+    public class AccountService : IAccountService
     {
         private readonly IClientStore _clientStore;
         private readonly IIdentityServerInteractionService _interaction;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IAuthenticationSchemeProvider _schemeProvider;
+        private readonly IOptions<AccountOptions> _options;
 
         public AccountService(
             IIdentityServerInteractionService interaction,
             IHttpContextAccessor httpContextAccessor,
             IAuthenticationSchemeProvider schemeProvider,
-            IClientStore clientStore)
+            IClientStore clientStore,
+            IOptions<AccountOptions> options)
         {
             _interaction = interaction;
             _httpContextAccessor = httpContextAccessor;
             _schemeProvider = schemeProvider;
             _clientStore = clientStore;
+            _options = options;
         }
 
         public async Task<LoginViewModel> BuildLoginViewModelAsync(string returnUrl)
@@ -41,11 +46,13 @@ namespace Sso.Services
                     EnableLocalLogin = false,
                     ReturnUrl = returnUrl,
                     Username = context.LoginHint,
-                    ExternalProviders = new[] {new ExternalProvider { AuthenticationScheme = context.IdP } }
+                    ExternalProviders = new[] {new ExternalProvider {AuthenticationScheme = context.IdP}}
                 };
             }
 
             var schemes = await _schemeProvider.GetAllSchemesAsync();
+
+            var config = _options.Value;
 
             var providers = schemes
                 .Where(x => x.DisplayName != null)
@@ -72,8 +79,8 @@ namespace Sso.Services
 
             return new LoginViewModel
             {
-                AllowRememberLogin = AccountOptions.AllowRememberLogin,
-                EnableLocalLogin = allowLocal && AccountOptions.AllowLocalLogin,
+                AllowRememberLogin = config.AllowRememberLogin,
+                EnableLocalLogin = allowLocal,
                 ReturnUrl = returnUrl,
                 Username = context?.LoginHint,
                 ExternalProviders = providers.ToArray()
@@ -90,7 +97,7 @@ namespace Sso.Services
 
         public async Task<LogoutViewModel> BuildLogoutViewModelAsync(string logoutId)
         {
-            var vm = new LogoutViewModel { LogoutId = logoutId, ShowLogoutPrompt = AccountOptions.ShowLogoutPrompt };
+            var vm = new LogoutViewModel { LogoutId = logoutId, ShowLogoutPrompt = _options.Value.ShowLogoutPrompt };
 
             var user = _httpContextAccessor.HttpContext.User;
             if (user?.Identity.IsAuthenticated != true)
@@ -120,7 +127,7 @@ namespace Sso.Services
 
             var vm = new LoggedOutViewModel
             {
-                AutomaticRedirectAfterSignOut = AccountOptions.AutomaticRedirectAfterSignOut,
+                AutomaticRedirectAfterSignOut = _options.Value.AutomaticRedirectAfterSignOut,
                 PostLogoutRedirectUri = logout?.PostLogoutRedirectUri,
                 ClientName = logout?.ClientId,
                 SignOutIframeUrl = logout?.SignOutIFrameUrl,

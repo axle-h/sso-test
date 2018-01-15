@@ -5,6 +5,7 @@ using IdentityServer4.Services;
 using IdentityServer4.Stores;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Sso.Attributes;
 using Sso.Models;
 using Sso.Models.Grants;
 
